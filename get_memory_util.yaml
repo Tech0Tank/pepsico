@@ -1,0 +1,76 @@
+---
+- set_fact:
+    results: 'SUCCESS'
+
+
+
+- block:
+    - name: Check Memory utilization of an esxihost
+      win_shell: |
+        $vCenterServer = "{{ vcenter_details }}"
+        $vCenterUsername = "svcAWXVCenterAuto@corp.pep.tst" 
+        $vCenterPassword = "X?U_27,_f_>nlC3-"
+        $hostName = "{{ esxi_hostname | first  }}"
+
+        Connect-VIServer -Server $vCenterServer -User $vCenterUsername -Password $vCenterPassword
+        $vmhost = Get-VMHost -Name $hostName | select Name, ConnectionState, PowerState, 
+        @{Name = 'MemoryUsage'; Expression = {($_.MemoryUsageGB / $_.MemoryTotalGB).ToString("P")}}"
+ 
+        if ($vmhost -ne $null) { $totalmemory = $vmhost.MemoryTotalGB
+          $usedmemory = $vmhost.MemoryUsageGB
+          $percentage = [float]$usedmemory / [float]$totalmemory * 100
+          $percentageFormatted = "{0:N2}" -f $percentage
+          # Check if Memory utilization is greater than 80%
+          if ($percentage -gt 80) {
+            $memoryUtilizationHigh = $true
+            Write-Output "Memory Used: $($percentageFormatted)%"
+          } else {
+            $memoryUtilizationHigh = $false
+            Write-Output "Memory Used: $($percentageFormatted)%."
+          }
+        }
+      register: result
+ 
+    - name: Extract Memory Used value
+      win_shell: |
+        $output = "{{ result.stdout }}"
+        if ($output -match 'Memory Used: ([0-9]+\.[0-9]+)%') {
+          Write-Output ($matches[1])
+        }
+      register: memory_used_value
+ 
+    - name: Set fact for Memory Used value
+      set_fact:
+        memory_used: "{{ memory_used_value.stdout | int }}"
+ 
+    - name: Output extracted Memory Used value
+      debug:
+        msg: "{{ esxi_hostname | first }} Memory utilization Percentage: {{ memory_used }}"
+      register: cpuout
+ 
+    - name: Append the memory utilization to work notes
+      set_fact:
+        messages: "{{ messages | default([]) + [cpuout.msg] }}"
+      when: results == 'SUCCESS'
+ 
+  rescue:
+    - set_fact:
+        results: 'failed'
+ 
+  always:
+ 
+      - name: updating the work notes with extracted Memory utilization percentage
+        include_role:
+          name: snow/snow_update_selfheal
+        vars:
+          table_name: "incident"
+          task_body: |
+            { 
+              "work_notes": "{{ messages | join("\n") }}"
+            }
+        when: results == 'SUCCESS'
+ 
+      - name: Fail the Job if any error occured on Extract Memory Used value
+        fail:
+          msg: "Error occured on Extract Memory Used value. Kindly assign it to manual queue."
+        when: results == 'failed'

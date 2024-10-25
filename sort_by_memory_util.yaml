@@ -1,0 +1,40 @@
+---
+- set_fact:
+    result_sort: 'SUCCESS'
+
+- block:
+    - name: Sort Table of an esxihost dependig on Memory utilization
+      win_shell: |
+        $vCenterServer = "{{ vcenter_details }}"
+        $vCenterUsername = "svcAWXVCenterAuto@corp.pep.tst" 
+        $vCenterPassword = "X?U_27,_f_>nlC3-"
+        $hostName = "{{ esxi_hostname | first  }}"
+        Connect-VIServer -Server $vCenterServer -User $vCenterUsername -Password $vCenterPassword
+        Get-VMHost -Name $hostName | get-process | Group-Object -Property ProcessName | %{ [PSCustomObject]@{ ProcessName = $_.Name
+         Mem_MB = [math]::Round(($_.Group|Measure-Object WorkingSet64 -Sum).Sum / 1MB, 0)
+         ProcessCount = $_.Count
+         }
+        } | sort -desc Mem_MB | Select-Object -First 10
+      register: result_memory
+ 
+  rescue:
+    - set_fact:
+        result_sort: 'failed'
+ 
+  always:
+ 
+      - name: updating the work notes by sorting on Memory utilization
+        include_role:
+          name: snow/snow_update_selfheal
+        vars:
+          table_name: "Process Table"
+          task_body: |
+            { 
+              "work_notes": "{{ result_memory | join("\n") }}"
+            }
+        when: result_sort == 'SUCCESS'
+ 
+      - name: Fail the Job if any error occured 
+        fail:
+          msg: "Error occured on sorting table. Kindly assign it to manual queue."
+        when: result_sort == 'failed'

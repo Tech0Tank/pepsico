@@ -1,0 +1,12 @@
+---
+name: Alert on Memory Utilization and sort as per Memory
+hosts: localhost
+become: true
+
+tasks:
+- name: Get ESXi Memory utilization
+  include_tasks: get_memory_util.yaml
+ 
+- name: Sort table by Memory utilization
+  include_tasks: sort_by_memory_util.yaml
+  when: results == 'SUCCESS'

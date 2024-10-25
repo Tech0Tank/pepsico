@@ -1,0 +1,41 @@
+---
+- name: Get parent Id in realtime
+  var: parent_id
+
+- name: Retrieve a specific incident by its sys_id
+  # Number should be dynamic
+  servicenow.itsm.incident_info:
+    number: "{{parent_id}}"
+  register: result
+
+- name: Creating Sub-Incident
+  snow_record:
+      username: "username"
+      password: "password"
+      instance: test
+      state: present
+      data:
+        short_description: "This is a test incident opened by Ansible"
+        severity: 3
+        priority: 2
+  register: new_incident
+
+- name: Update an incident as child to parent incident
+  snow_record:
+    username: "username"
+    password: "password"
+    instance: test
+    state: present
+    number: "{{parent_id}}"
+    data:
+      child_incidents : "{{new_incident['record']['number']}}"
+
+- name: Update work notes
+  snow_record:
+    username: "username"
+    password: "password"
+    instance: test
+    state: present
+    number: "{{parent_id}}"
+    data:
+      work_notes: "parent incident - {{parent_id}} and its sub-incident {{new_incident['record']['number']}} is created"
